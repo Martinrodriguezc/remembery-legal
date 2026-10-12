@@ -36,8 +36,8 @@
 
   <h2>Cómo funciona</h2>
   <ol>
-    <li>Deja abajo el <strong>Gmail que usas en tu Android</strong> (Google invita a los testers por ese correo).</li>
-    <li>Te llega un link para unirte a la prueba desde Google Play.</li>
+    <li>Deja abajo el <strong>Gmail que usas en tu Android</strong>.</li>
+    <li>Únete al grupo de testers y acepta la prueba en Google Play (te mostramos los 2 links). Usa <strong>la misma cuenta de Google</strong> en los dos pasos y en tu teléfono.</li>
     <li>Instala Remembery y <strong>déjala instalada 14 días</strong>. Úsala cuando quieras y cuéntanos qué mejorarías.</li>
   </ol>
 
@@ -48,6 +48,14 @@
     <button type="submit">Quiero ser tester</button>
     <div id="msg"></div>
   </form>
+  <div id="next" style="display:none">
+    <h2>Ahora, 2 pasos</h2>
+    <ol>
+      <li><a href="https://groups.google.com/g/remembery-testers" target="_blank" rel="noopener"><strong>Únete al grupo de testers</strong></a> (botón "Unirse al grupo").</li>
+      <li><a href="https://play.google.com/apps/testing/app.remembery.android" target="_blank" rel="noopener"><strong>Acepta la prueba e instala Remembery</strong></a> desde Google Play.</li>
+    </ol>
+    <p class="muted">Si Play dice que no estás invitado/a, espera unos minutos después de unirte al grupo y vuelve a abrir el link.</p>
+  </div>
   <p class="muted" style="margin-top:14px">Solo usamos tu correo para invitarte a la prueba. <a href="privacidad.html">Privacidad</a></p>
   <p class="muted">¿Tienes iPhone? Remembery ya está en la App Store: <a href="https://apps.apple.com/app/id6821806458">descárgala aquí</a>.</p>
 </div>
@@ -62,7 +70,7 @@ f.addEventListener('submit', async (e) => {
   const email = f.email.value.trim().toLowerCase(), name = f.name.value.trim() || null;
   try {
     const r = await fetch(URL_, { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ email, name }) });
-    if (r.ok || r.status === 409) { msg.textContent = r.ok ? '¡Listo! Te llegará la invitación a ' + email + ' 🎉' : 'Ya estabas anotado/a con ese correo 🙌'; msg.className = 'ok'; f.reset(); }
+    if (r.ok || r.status === 409) { msg.textContent = r.ok ? '¡Listo! Te llegará la invitación a ' + email + ' 🎉' : 'Ya estabas anotado/a con ese correo 🙌'; msg.className = 'ok'; f.reset(); document.getElementById('next').style.display = 'block'; document.getElementById('next').scrollIntoView({ behavior: 'smooth' }); }
     else throw new Error(r.status);
   } catch { msg.textContent = 'No se pudo enviar. Inténtalo de nuevo en un momento.'; msg.className = 'err'; }
   b.disabled = false;
