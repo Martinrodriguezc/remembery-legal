@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remembery para Android · Sé tester</title>
+<meta name="description" content="Prueba Remembery en Android antes que nadie. Los testers que se queden 14 días reciben 1 año de PRO gratis.">
+<link rel="stylesheet" href="style.css">
+<style>
+  .hero{text-align:center}
+  .hero img{width:84px;height:84px;border-radius:20px;box-shadow:0 10px 26px rgba(124,58,237,.3)}
+  .hero h1{font-size:32px;margin-top:18px;letter-spacing:-.5px}
+  .grad{background:linear-gradient(120deg,#FF2D55,#C026D3 50%,#7C3AED);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .gift{margin:22px 0;padding:16px 18px;border-radius:16px;background:linear-gradient(120deg,rgba(255,45,85,.08),rgba(124,58,237,.10));font-weight:600}
+  ol{padding-left:22px} ol li{margin:6px 0}
+  form{margin-top:22px;display:grid;gap:12px}
+  input[type=email],input[type=text]{width:100%;padding:15px 16px;border-radius:14px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:16px}
+  label.ck{display:flex;gap:10px;align-items:flex-start;font-size:15px;color:var(--ink)}
+  label.ck input{margin-top:3px;width:18px;height:18px}
+  button{padding:16px;border:0;border-radius:999px;background:linear-gradient(120deg,#FF2D55,#C026D3 50%,#7C3AED);color:#fff;font-size:17px;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.6}
+  #msg{min-height:22px;font-weight:600;text-align:center}
+  .ok{color:#16A34A}.err{color:#DC2626}
+</style>
+</head>
+<body>
+<main>
+<div class="card">
+  <div class="hero">
+    <img src="icon.png" alt="">
+    <h1>Remembery llega a <span class="grad">Android</span></h1>
+    <p class="muted">Recuerda cada cumpleaños y escribe la felicitación perfecta en segundos.</p>
+  </div>
+
+  <div class="gift">🎁 Busco 20 personas con Android para probarla antes que nadie. Los que se queden 14 días reciben <strong>1 año de Remembery PRO gratis</strong>.</div>
+
+  <h2>Cómo funciona</h2>
+  <ol>
+    <li>Deja abajo el <strong>Gmail que usas en tu Android</strong> (Google invita a los testers por ese correo).</li>
+    <li>Te llega un link para unirte a la prueba desde Google Play.</li>
+    <li>Instala Remembery y <strong>déjala instalada 14 días</strong>. Úsala cuando quieras y cuéntanos qué mejorarías.</li>
+  </ol>
+
+  <form id="f">
+    <input type="email" name="email" placeholder="tu.correo@gmail.com" required autocomplete="email">
+    <input type="text" name="name" placeholder="Tu nombre (opcional)" maxlength="80" autocomplete="given-name">
+    <label class="ck"><input type="checkbox" required> Tengo un teléfono Android y me comprometo a mantener la app instalada 14 días.</label>
+    <button type="submit">Quiero ser tester</button>
+    <div id="msg"></div>
+  </form>
+  <p class="muted" style="margin-top:14px">Solo usamos tu correo para invitarte a la prueba. <a href="privacidad.html">Privacidad</a></p>
+  <p class="muted">¿Tienes iPhone? Remembery ya está en la App Store: <a href="https://apps.apple.com/app/id6821806458">descárgala aquí</a>.</p>
+</div>
+</main>
+<script>
+const URL_ = "https://irayrkcdpwozfkfsqdcw.supabase.co/rest/v1/android_testers";
+const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlyYXlya2NkcHdvemZrZnNxZGN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3NTkyMzYsImV4cCI6MjEwNzMzNTIzNn0.L1AxdtOsWEjzphuLxQUMyh3Wd6g_T6Gw-ATbQjpFeZc"; // public anon key: insert-only table
+const f = document.getElementById('f'), msg = document.getElementById('msg');
+f.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const b = f.querySelector('button'); b.disabled = true; msg.textContent = ''; msg.className = '';
+  const email = f.email.value.trim().toLowerCase(), name = f.name.value.trim() || null;
+  try {
+    const r = await fetch(URL_, { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ email, name }) });
+    if (r.ok || r.status === 409) { msg.textContent = r.ok ? '¡Listo! Te llegará la invitación a ' + email + ' 🎉' : 'Ya estabas anotado/a con ese correo 🙌'; msg.className = 'ok'; f.reset(); }
+    else throw new Error(r.status);
+  } catch { msg.textContent = 'No se pudo enviar. Inténtalo de nuevo en un momento.'; msg.className = 'err'; }
+  b.disabled = false;
+});
+</script>
+</body>
+</html>
