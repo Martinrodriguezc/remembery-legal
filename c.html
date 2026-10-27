@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Tarjeta de cumpleaños · Remembery</title>
+<meta property="og:title" content="Te invitaron a una tarjeta de cumpleaños">
+<meta property="og:description" content="Deja tu saludo en un minuto, sin instalar nada. Hecha con Remembery.">
+<meta property="og:image" content="https://martinrodriguezc.github.io/remembery-legal/og-card.png">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#F7F8FC">
+<link rel="stylesheet" href="card.css">
+</head>
+<body>
+<main id="app"></main>
+<script type="module">
+import { api, ApiError, t, h, ICON, lang, brand, footer, seal, skeleton, photoEl, avatar, token, store, fmtDate, dayOf, listNames, firstName, fmtDur } from './card.js';
+
+const app = document.getElementById('app');
+const tok = token();
+const KEY = `rm-card-${tok}`;
+const client = store.get('rm-client') || (() => { const c = crypto.randomUUID(); store.set('rm-client', c); return c; })();
+let card;            // data from `join`
+let editing = false; // true while editing an existing message
+
+const show = (...nodes) => { app.replaceChildren(brand(), ...nodes.filter(Boolean)); window.scrollTo(0, 0); };
+const v = () => ({
+  name: firstName(card.name), bday: firstName(card.name), date: fmtDate(card.birthday), day: dayOf(card.birthday),
+  organizer: card.organizer, everyone: card.isFamily ? t('family') : t('everyone'),
+});
+
+async function load() {
+  show(skeleton(t('loading')));
+  try {
+    card = await api('join', { token: tok, secret: store.get(KEY)?.secret });
+  } catch (e) {
+    if (e.status === 404 || e.status === 410) return gone();
+    return show(h('div', { class: 'card center' },
+      h('h2', {}, t('loadErrTitle')), h('p', {}, t('loadErrBody')),
+      h('button', { class: 'btn btn-primary', onclick: load }, t('retry'))), footer());
+  }
+  route();
+}
+
+function route() {
+  if (card.mine && !editing) return done();
+  if (card.state === 'closed') return closed();
+  form();
+}
+
+// ---------- W1 / W1b: write ----------
+function form() {
+  const mine = editing ? card.mine : null;
+  const vars = v();
+  const media = { photo: mine?.photo ? { url: mine.photo, keep: true } : null, audio: mine?.audio ? { url: mine.audio, keep: true } : null };
+
+  const header = card.pro
+    ? h('div', { class: 'card', style: 'display:flex;gap:14px;align-items:center' },
+        photoEl(card.photo, card.name, 'photo sm'),
+        h('div', {}, h('b', {}, t('joinCompact', vars)), h('div', { class: 'muted' }, t('joinCompactSub', { ...vars, n: card.count }))))
+    : h('div', { class: 'card center intro' },
+        photoEl(card.photo, card.name),
+        h('h1', {}, t('joinTitle', vars)),
+        h('p', {}, card.organizer ? t('joinBody', vars) : t('joinBodyNoOrg', vars)),
+        card.count ? h('div', { class: 'people' },
+          h('div', { class: 'stack' }, card.participants.slice(0, 4).map((n, i) => avatar(n, i))),
+          h('p', {}, t('joinCount', { n: card.count, names: listNames(card.participants.slice(0, 6)) }))) : null);
+
+  const nameIn = h('input', { type: 'text', id: 'name', maxlength: 60, autocomplete: 'given-name', placeholder: t('namePh'), 'aria-describedby': 'name-err' });
+  const bodyIn = h('textarea', { id: 'body', maxlength: 1000, placeholder: t('msgPh', vars), 'aria-describedby': 'body-err' });
+  nameIn.value = mine?.name ?? store.get('rm-name') ?? '';
+  bodyIn.value = mine?.body ?? store.get(`${KEY}-draft`) ?? '';
+  bodyIn.addEventListener('input', () => store.set(`${KEY}-draft`, bodyIn.value));
+  const nameErr = h('p', { class: 'err', id: 'name-err', hidden: true });
+  const bodyErr = h('p', { class: 'err', id: 'body-err', hidden: true });
+  const saveErr = h('div', { class: 'alert', role: 'alert', hidden: true });
+  const submit = h('button', { class: 'btn btn-primary', type: 'submit' }, editing ? t('saveChanges') : t('send'));
+
+  const aiBtn = h('button', { type: 'button', class: 'helper', disabled: !card.aiLeft, onclick: () => aiSheet(bodyIn, aiBtn) },
+    h('span', { class: 'spark', 'aria-hidden': 'true' }, '✦'),
+    h('span', {}, h('b', {}, t('ai')), h('span', {}, card.aiLeft ? t('aiSub') : t('aiExhausted'))));
+
+  const attachList = h('div');
+  const mediaBox = card.pro ? mediaControls(media, attachList) : null;
+
+  const formEl = h('form', { class: 'card', novalidate: true, onsubmit: async (ev) => {
+    ev.preventDefault();
+    const name = nameIn.value.trim(), body = bodyIn.value.trim();
+    const bad = (input, err, msg) => { input.setAttribute('aria-invalid', 'true'); err.textContent = msg; err.hidden = false; };
+    [nameIn, bodyIn].forEach((i) => i.removeAttribute('aria-invalid')); nameErr.hidden = bodyErr.hidden = saveErr.hidden = true;
+    if (name.length < 2) bad(nameIn, nameErr, t('errName', vars));
+    if (body.length < 10) bad(bodyIn, bodyErr, t('errMsg'));
+    if (name.length < 2 || body.length < 10) return (name.length < 2 ? nameIn : bodyIn).focus();
+
+    submit.disabled = true; submit.textContent = t('sending');
+    try {
+      const payload = { token: tok, name, body, ...(editing ? { id: card.mine.id, secret: store.get(KEY).secret } : {}) };
+      // A kept file leaves its key out (the server keeps it); a removed one sends null.
+      for (const kind of ['photo', 'audio']) {
+        const m = media[kind];
+        if (!m) { payload[kind] = null; continue; }
+        if (m.keep) continue;
+        if (!m.path) {
+          const up = await api('upload', { token: tok, kind, type: m.blob.type });
+          const put = await fetch(up.url, { method: 'PUT', headers: { 'Content-Type': up.type }, body: m.blob });
+          if (!put.ok) throw new ApiError(put.status, 'upload');
+          m.path = up.path;
+        }
+        payload[kind] = m.path;
+      }
+      const r = await api('save', payload);
+      if (r.secret) store.set(KEY, { id: r.id, secret: r.secret });
+      store.set('rm-name', name);
+      store.set(`${KEY}-draft`, null);
+      editing = false;
+      return load();
+    } catch (e) {
+      saveErr.textContent = e.code === 'closed' ? t('errClosed', vars) : e.status === 429 ? t('errBusy') : t('errSave');
+      saveErr.hidden = false;
+      submit.disabled = false; submit.textContent = t('retry');
+    }
+  } },
+    h('label', { for: 'name' }, t('nameLabel')), nameIn, nameErr,
+    h('label', { for: 'body' }, t('msgLabel', vars)), bodyIn, bodyErr,
+    aiBtn, mediaBox, attachList, submit, saveErr,
+    h('p', { class: 'note' }, card.organizer ? t('privacy', vars) : t('privacyNoOrg', vars)));
+
+  // Desktop: intro left, form right (the intro card turns into plain text there).
+  if (!card.pro) { app.classList.add('wide'); show(h('div', { class: 'split' }, header, formEl), footer()); }
+  else show(header, formEl, footer());
+}
+
+// Photo + voice note (PRO cards only; on free cards these controls don't exist at all).
+function mediaControls(media, list) {
+  const fileIn = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: () => {
+    const f = fileIn.files[0]; if (!f) return;
+    if (f.size > 10 * 1024 * 1024) return alert(t('tooBig'));
+    media.photo = { blob: f, url: URL.createObjectURL(f) }; render();
+  } });
+  let rec = null;
+  const audioBtn = h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => (rec ? rec.stop() : record()) });
+  async function record() {
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { return alert(t('micDenied')); }
+    const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((x) => window.MediaRecorder?.isTypeSupported?.(x)) || '';
+    const r = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    const chunks = []; const t0 = Date.now();
+    r.ondataavailable = (e) => chunks.push(e.data);
+    r.onstop = () => {
+      stream.getTracks().forEach((tr) => tr.stop()); clearInterval(tick); rec = null;
+      const blob = new Blob(chunks, { type: (r.mimeType || 'audio/webm').split(';')[0] });
+      media.audio = { blob, url: URL.createObjectURL(blob), dur: (Date.now() - t0) / 1000 }; render();
+    };
+    const tick = setInterval(() => {
+      const s = Math.floor((Date.now() - t0) / 1000);
+      audioBtn.textContent = t('recording', { s }); audioBtn.classList.add('rec');
+      if (s >= 30) r.stop();
+    }, 250);
+    rec = r; r.start();
+  }
+  function render() {
+    audioBtn.classList.remove('rec');
+    audioBtn.replaceChildren(h('span', { html: ICON.mic }), t('audio'));
+    list.replaceChildren(
+      media.photo ? h('div', { class: 'attach' }, h('img', { src: media.photo.url, alt: '' }),
+        h('div', {}, h('b', {}, t('photoAdded'))),
+        h('button', { type: 'button', class: 'x', 'aria-label': t('removePhoto'), onclick: () => { media.photo = null; render(); } }, '×')) : '',
+      media.audio ? h('div', { class: 'attach' },
+        h('button', { type: 'button', class: 'ic', style: 'border:0;cursor:pointer', 'aria-label': t('tapListen'), html: ICON.play, onclick: () => new Audio(media.audio.url).play() }),
+        h('div', {}, h('b', {}, t('recorded', { dur: media.audio.dur ? fmtDur(media.audio.dur) : '' })), h('span', {}, t('tapListen'))),
+        h('button', { type: 'button', class: 'x', 'aria-label': t('removeAudio'), onclick: () => { media.audio = null; render(); } }, '×')) : '');
+  }
+  render();
+  return h('div', {}, h('label', {}, t('mediaLabel')),
+    h('div', { class: 'row2' },
+      h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => fileIn.click() }, h('span', { html: ICON.image }), t('photo')),
+      audioBtn), fileIn);
+}
+
+// "Ayúdame a escribirlo"
+function aiSheet(bodyIn, aiBtn) {
+  const vars = v();
+  let tone = 'emotional';
+  const q1 = h('input', { type: 'text', id: 'q1', maxlength: 120 });
+  const q2 = h('textarea', { id: 'q2', maxlength: 400, rows: 3, style: 'min-height:96px', placeholder: t('aiQ2Ph', vars) });
+  const err = h('p', { class: 'err', hidden: true }, t('aiFail'));
+  const chips = h('div', { class: 'chips', role: 'group' }, [['funny', 'toneFun'], ['emotional', 'toneEmo'], ['short', 'toneShort']].map(([k, label]) =>
+    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(k === tone), onclick: (e) => {
+      tone = k; chips.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(c === e.currentTarget)));
+    } }, t(label))));
+  const go = h('button', { class: 'btn btn-primary', onclick: async () => {
+    go.disabled = true; go.textContent = t('aiWorking'); err.hidden = true;
+    try {
+      const r = await api('ai', { token: tok, client, relation: q1.value, detail: q2.value, tone, locale: lang });
+      bodyIn.value = r.draft; bodyIn.dispatchEvent(new Event('input'));
+      if (!r.left) { card.aiLeft = false; aiBtn.disabled = true; aiBtn.querySelector('span span').textContent = t('aiExhausted'); }
+      bg.remove(); bodyIn.focus();
+    } catch (e) {
+      if (e.code === 'ai_exhausted' || e.code === 'rate_limited') {
+        card.aiLeft = false; aiBtn.disabled = true; aiBtn.querySelector('span span').textContent = t('aiExhausted'); bg.remove(); return;
+      }
+      err.hidden = false; go.disabled = false; go.textContent = t('aiCta');
+    }
+  } }, t('aiCta'));
+  const bg = h('div', { class: 'sheet-bg', onclick: (e) => e.target === bg && bg.remove() },
+    h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ai-title' },
+      h('div', { class: 'grab' }),
+      h('div', { class: 'sheet-head' }, h('h2', { id: 'ai-title', style: 'margin:0' }, '✦ ', t('aiTitle')),
+        h('button', { class: 'close', 'aria-label': t('close'), onclick: () => bg.remove() }, '×')),
+      h('p', { class: 'small', style: 'margin-top:8px' }, t('aiBody')),
+      h('label', { for: 'q1' }, t('aiQ1', vars)), q1,
+      h('label', { for: 'q2' }, t('aiQ2', vars)), q2,
+      chips, go, err, h('p', { class: 'note' }, t('aiNote'))));
+  document.body.append(bg);
+  q1.focus();
+}
+
+// ---------- W2 / W2b / W7: after writing ----------
+function done() {
+  const vars = v();
+  const m = card.mine;
+  const opened = card.state === 'closed';
+  const waiting = m.status === 'waiting' && !opened;
+  const top = h('div', { class: 'card center' },
+    h('div', { class: 'check', 'aria-hidden': 'true' }, '✓'),
+    h('h1', {}, waiting ? t('pendingTitle') : t('doneTitle', { name: firstName(m.name) })),
+    h('p', {}, waiting ? t('pendingBody', vars) : opened ? t('openedBody', vars) : t('doneBody', vars)),
+    h('div', { class: 'yours' }, h('div', { class: 'eyebrow' }, t('yours')), h('p', {}, m.body),
+      m.photo ? h('img', { src: m.photo, alt: '', style: 'width:100%;border-radius:14px;margin-top:12px' }) : null,
+      m.audio ? h('audio', { src: m.audio, controls: true, style: 'width:100%;margin-top:12px' }) : null,
+      m.editable ? h('button', { class: 'link', onclick: () => { editing = true; form(); } }, t('edit')) : null),
+    h('p', { class: 'muted' }, opened ? t('openedNote', vars) : waiting ? t('pendingNote') : t('doneNote', vars)));
+  const count = !waiting && !opened && card.count ? h('div', { class: 'card people', style: 'margin-top:0' },
+    h('div', { class: 'stack' }, card.participants.slice(0, 4).map((n, i) => avatar(n, i))),
+    h('p', {}, t('doneCount', { ...vars, n: card.count }))) : null;
+  const reply = card.reply ? h('div', { class: 'card' },
+    h('div', { class: 'reply-card' }, photoEl(card.photo, card.name, 'photo sm'),
+      h('div', {}, h('b', {}, t('replied', vars)))),
+    h('p', { class: 'reply-text' }, card.reply.text)) : null;
+  show(top, count, reply, seal(), footer(false));
+}
+
+// ---------- W4a / W4b ----------
+function closed() {
+  const vars = v();
+  show(h('div', { class: 'card center' }, photoEl(card.photo, card.name),
+    h('h1', {}, t('closedTitle', vars)), h('p', {}, t('closedBody', vars))),
+    seal(t('closedSealTitle'), t('closedSealBody')), footer(false));
+}
+function gone() {
+  show(h('div', { class: 'card center' },
+    h('div', { class: 'photo initials', style: 'background:#F1F5F9', html: ICON.broken }),
+    h('h1', {}, t('goneTitle')), h('p', {}, t('goneBody'))),
+    seal(t('goneSealTitle'), t('goneSealBody')), footer(false));
+}
+
+addEventListener('hashchange', () => location.reload());
+if (!/^[0-9a-f]{32}$/.test(tok)) gone(); else load();
+</script>
+</body>
+</html>

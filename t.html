@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Tu tarjeta de cumpleaños · Remembery</title>
+<meta property="og:title" content="Te prepararon una tarjeta de cumpleaños 🎁">
+<meta property="og:description" content="Ábrela cuando quieras. Hecha con Remembery.">
+<meta property="og:image" content="https://martinrodriguezc.github.io/remembery-legal/og-card.png">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="card.css">
+</head>
+<body class="t">
+<div class="deco" aria-hidden="true"></div>
+<main id="app"></main>
+<script type="module">
+import { api, t, h, ICON, brand, footer, skeleton, photoEl, avatar, token, store, listNames, firstName, fmtDur, toast } from './card.js';
+
+const app = document.getElementById('app');
+const tok = token();
+// The organizer's preview from the app passes their session after the token: #<token>&a=<jwt>.
+const auth = new URLSearchParams(location.hash.slice(1).split('&').slice(1).join('&')).get('a');
+if (auth) history.replaceState(null, '', `${location.pathname}#${tok}`);
+let card, msgs, index = -1; // -1 = cover, msgs.length = end
+const KEY = `rm-bday-${tok}`;
+
+const show = (...nodes) => { app.replaceChildren(...nodes.filter(Boolean)); window.scrollTo(0, 0); };
+const name = () => firstName(card.name);
+
+const MEDALS = {
+  confeti: '<svg width="26" height="26" viewBox="0 0 26 26"><circle cx="7" cy="8" r="3" fill="#FF2D55"/><circle cx="18" cy="6" r="2.5" fill="#C026D3"/><circle cx="13" cy="17" r="3" fill="#7C3AED"/><circle cx="21" cy="17" r="2" fill="#FF2D55"/></svg>',
+  jardin: '<svg width="28" height="28" viewBox="0 0 28 28"><g fill="#F9A8D4"><circle cx="14" cy="7" r="5"/><circle cx="21" cy="12" r="5"/><circle cx="18" cy="20" r="5"/><circle cx="10" cy="20" r="5"/><circle cx="7" cy="12" r="5"/></g><circle cx="14" cy="14" r="4" fill="#FDBA74"/></svg>',
+  noche: '<svg width="26" height="26" viewBox="0 0 24 24"><path fill="#FDE68A" d="M12 1.5l2.6 7.9 7.9 2.6-7.9 2.6L12 22.5l-2.6-7.9L1.5 12l7.9-2.6z"/></svg>',
+};
+
+function decorate(design) {
+  document.body.classList.add(`d-${design}`);
+  const deco = document.querySelector('.deco');
+  // Ornaments only in the margins, never under the text column.
+  const spots = [[6, 8], [88, 12], [4, 38], [93, 46], [8, 78], [90, 86], [48, 4], [12, 60], [86, 66]];
+  const palette = {
+    confeti: ['#FF2D55', '#C026D3', '#7C3AED'],
+    jardin: ['#F9A8D4', '#86EFAC', '#FDBA74'],
+    noche: ['#FFFFFF', '#FDE68A', '#FFFFFF'],
+  }[design];
+  deco.replaceChildren(...spots.map(([x, y], i) => {
+    const size = design === 'jardin' ? 90 + (i % 3) * 20 : design === 'noche' ? 3 + (i % 3) * 2 : 8 + (i % 3) * 3;
+    return h('i', { style: `left:${x}%;top:${y}%;width:${size}px;height:${size}px;background:${palette[i % 3]};margin:-${size / 2}px 0 0 -${size / 2}px` });
+  }));
+}
+
+async function load() {
+  show(brand(), skeleton(t('cardLoading')));
+  try {
+    card = await api('view', { token: tok }, auth);
+  } catch (e) {
+    if (e.status === 404 || e.status === 410) return gone();
+    return show(brand(), h('div', { class: 'card center' }, h('h2', {}, t('cardErrTitle')), h('p', {}, t('cardErrBody')),
+      h('button', { class: 'btn btn-primary', onclick: load }, t('retry'))), footer());
+  }
+  msgs = card.messages;
+  decorate(card.design);
+  render();
+}
+
+const previewBar = () => (card.preview ? h('div', { class: 'preview-bar' }, t('previewBar', { name: name() })) : null);
+const names = () => listNames(msgs.map((m) => firstName(m.name)));
+
+function render() {
+  if (index < 0) return cover();
+  if (index >= msgs.length) return end();
+  message(msgs[index]);
+}
+
+function collage() {
+  const pos = [[44, 0], [130, 0], [0, 52], [174, 52], [44, 110], [130, 110]];
+  return h('div', { class: 'collage', 'aria-hidden': 'true' },
+    msgs.slice(0, 6).map((m, i) => { const a = avatar(m.name, i); a.style.left = `${pos[i][0]}px`; a.style.top = `${pos[i][1]}px`; return a; }),
+    h('div', { class: 'gift', html: ICON.gift.replace('<svg', '<svg width="34" height="34"') }));
+}
+
+function cover() {
+  const n = msgs.length;
+  show(previewBar(), h('div', { class: 'cover anim' },
+    collage(),
+    h('div', { class: 'hello' }, `${name()},`),
+    h('h1', {}, n ? t('coverTitle', { n }) : t('emptyCard')),
+    n ? h('p', {}, t('coverBody', { n, names: names() })) : null,
+    n ? h('button', { class: 'btn btn-primary', style: 'margin-top:24px', onclick: () => { index = 0; render(); } }, t('open')) : null,
+    h('p', { class: 'note' }, t('openNote'))), footer());
+}
+
+function player(m) {
+  const audio = new Audio(m.audio);
+  audio.preload = 'metadata';
+  const btn = h('button', { class: 'play', 'aria-label': t('playAudio', { name: firstName(m.name) }), html: ICON.play });
+  const bar = h('i');
+  const label = h('b', {}, t('audioOf', { name: firstName(m.name) }));
+  audio.addEventListener('loadedmetadata', () => { if (isFinite(audio.duration)) label.textContent = `${t('audioOf', { name: firstName(m.name) })} · ${fmtDur(audio.duration)}`; });
+  audio.addEventListener('timeupdate', () => { if (audio.duration) bar.style.width = `${(audio.currentTime / audio.duration) * 100}%`; });
+  audio.addEventListener('ended', () => { btn.innerHTML = ICON.play; });
+  btn.onclick = () => { if (audio.paused) { audio.play(); btn.innerHTML = ICON.pause; } else { audio.pause(); btn.innerHTML = ICON.play; } };
+  return h('div', { class: 'player' }, btn, h('div', { style: 'flex:1' }, label, h('div', { class: 'track' }, bar)));
+}
+
+function go(delta) { index = Math.max(-1, Math.min(msgs.length, index + delta)); render(); }
+
+function message(m) {
+  const n = msgs.length;
+  const first = firstName(m.name);
+  const box = h('article', { class: 'msg anim', 'aria-label': `${first} · ${t('progress', { i: index + 1, n })}` },
+    h('span', { class: 'medal', 'aria-hidden': 'true', html: MEDALS[card.design] }),
+    h('div', { class: 'who' }, avatar(m.name, index), h('div', {}, h('b', {}, m.name), h('span', {}, t('wrote')))),
+    m.photo ? h('img', { class: 'pic', src: m.photo, alt: t('photoAlt', { name: first }) }) : null,
+    h('p', { class: 'body' }, m.body),
+    m.audio ? player(m) : null);
+  const hide = h('button', { class: 'link', disabled: card.preview, title: card.preview ? t('previewNoAct') : null, onclick: async () => {
+    const hidden = msgs.splice(index, 1)[0];
+    render();
+    toast(t('hidden'), t('undo'), async () => {
+      msgs.splice(Math.min(index, msgs.length), 0, hidden); render();
+      await api('hide', { token: tok, id: hidden.id, hidden: false }).catch(() => {});
+    });
+    await api('hide', { token: tok, id: hidden.id, hidden: true }).catch(() => {});
+  } }, t('hide'));
+  show(previewBar(),
+    h('div', { class: 'topbar' }, h('span', {}, t('forName', { name: name() })), h('span', {}, t('progress', { i: index + 1, n }))),
+    h('div', { class: 'bars', 'aria-hidden': 'true' }, msgs.map((_, i) => h('span', { class: i <= index ? 'on' : '' }))),
+    h('div', { class: 'msgwrap' }, box,
+      h('div', { class: 'arrows' },
+        h('button', { class: 'prev', 'aria-label': t('prev'), onclick: () => go(-1) }, '←'),
+        h('button', { class: 'next', 'aria-label': t('next'), onclick: () => go(1) }, '→'))),
+    h('button', { class: 'btn btn-primary msg-next', style: 'margin-top:28px', onclick: () => go(1) }, `${t('next')} →`),
+    h('div', { class: 'navrow' }, h('button', { class: 'link prevlink', onclick: () => go(-1) }, t('prev')), hide),
+    footer(false));
+}
+
+function end() {
+  const vars = { name: name(), organizer: firstName(card.organizer) || '—' };
+  const sent = card.reply ?? store.get(KEY);
+  const area = h('textarea', { id: 'reply', maxlength: 1000 });
+  area.value = sent ?? t('replyDefault');
+  const err = h('p', { class: 'err', hidden: true });
+  const replyBox = h('div', { class: 'card' });
+  const showForm = () => replyBox.replaceChildren(
+    h('label', { for: 'reply' }, t('replyLabel')), area,
+    h('button', { class: 'btn btn-primary', style: 'margin-top:12px', disabled: card.preview, onclick: async (e) => {
+      const text = area.value.trim(); if (!text) return area.focus();
+      e.currentTarget.disabled = true; err.hidden = true;
+      try {
+        await api('reply', { token: tok, text }); card.reply = text; store.set(KEY, text); showDone();
+      } catch { err.textContent = t('cardErrBody'); err.hidden = false; e.currentTarget.disabled = false; }
+    } }, t('replyCta')),
+    err, h('p', { class: 'note' }, card.preview ? t('previewNoAct') : t('replyNote', vars)));
+  const showDone = () => replyBox.replaceChildren(
+    h('div', { class: 'reply-card' }, h('div', { class: 'check', style: 'width:40px;height:40px;font-size:20px;margin:0' }, '✓'), h('b', {}, t('replyDone', vars))),
+    h('div', { class: 'yours', style: 'margin-top:4px' }, h('p', {}, card.reply)),
+    h('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
+      h('span', { class: 'muted' }, t('replyDoneNote')), h('button', { class: 'link', onclick: showForm }, t('replyEdit'))));
+  card.reply ? showDone() : showForm();
+  show(previewBar(),
+    h('div', { class: 'topbar' }, h('span', {}, t('forName', { name: name() })), h('span', {}, t('progress', { i: msgs.length, n: msgs.length }))),
+    h('div', { class: 'end anim' },
+      h('div', { class: 'stack', style: 'justify-content:center;margin-top:8px' }, msgs.slice(0, 7).map((m, i) => avatar(m.name, i))),
+      h('div', { class: 'end-title' }, t('endTitle1'), h('br'), h('span', {}, t('endTitle2'))),
+      h('p', { class: 'center' }, t('endBody', { n: msgs.length, names: names(), name: name() })),
+      replyBox,
+      h('div', { class: 'center' }, h('button', { class: 'link', onclick: () => { index = 0; render(); } }, t('again')))),
+    footer());
+}
+
+function gone() {
+  show(brand(), h('div', { class: 'card center' },
+    h('div', { class: 'photo initials', style: 'background:#F1F5F9', html: ICON.broken }),
+    h('h1', {}, t('goneTitle')), h('p', {}, t('goneBody'))), footer());
+}
+
+// Keyboard and swipe navigation between messages.
+addEventListener('keydown', (e) => {
+  if (!msgs || e.target.closest?.('textarea, input')) return;
+  if (e.key === 'ArrowRight') go(1);
+  if (e.key === 'ArrowLeft') go(-1);
+});
+let x0 = null;
+addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+addEventListener('touchend', (e) => {
+  if (x0 == null || !msgs || index < 0 || index >= msgs.length) return;
+  const dx = e.changedTouches[0].clientX - x0; x0 = null;
+  if (Math.abs(dx) > 60) go(dx < 0 ? 1 : -1);
+});
+
+addEventListener('hashchange', () => location.reload());
+if (!/^[0-9a-f]{32}$/.test(tok)) gone(); else load();
+</script>
+</body>
+</html>
