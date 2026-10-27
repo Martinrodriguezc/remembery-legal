@@ -66,7 +66,8 @@ async function load() {
 }
 
 const previewBar = () => (card.preview ? h('div', { class: 'preview-bar' }, t('previewBar', { name: name() })) : null);
-const names = () => listNames(msgs.map((m) => firstName(m.name)));
+// Participants' names as they typed them ("Tía Rosa"), not just the first word.
+const names = () => listNames(msgs.map((m) => m.name.trim()));
 
 function render() {
   if (index < 0) return cover();
@@ -95,10 +96,10 @@ function cover() {
 function player(m) {
   const audio = new Audio(m.audio);
   audio.preload = 'metadata';
-  const btn = h('button', { class: 'play', 'aria-label': t('playAudio', { name: firstName(m.name) }), html: ICON.play });
+  const btn = h('button', { class: 'play', 'aria-label': t('playAudio', { name: m.name.trim() }), html: ICON.play });
   const bar = h('i');
-  const label = h('b', {}, t('audioOf', { name: firstName(m.name) }));
-  audio.addEventListener('loadedmetadata', () => { if (isFinite(audio.duration)) label.textContent = `${t('audioOf', { name: firstName(m.name) })} · ${fmtDur(audio.duration)}`; });
+  const label = h('b', {}, t('audioOf', { name: m.name.trim() }));
+  audio.addEventListener('loadedmetadata', () => { if (isFinite(audio.duration)) label.textContent = `${t('audioOf', { name: m.name.trim() })} · ${fmtDur(audio.duration)}`; });
   audio.addEventListener('timeupdate', () => { if (audio.duration) bar.style.width = `${(audio.currentTime / audio.duration) * 100}%`; });
   audio.addEventListener('ended', () => { btn.innerHTML = ICON.play; });
   btn.onclick = () => { if (audio.paused) { audio.play(); btn.innerHTML = ICON.pause; } else { audio.pause(); btn.innerHTML = ICON.play; } };
@@ -109,7 +110,7 @@ function go(delta) { index = Math.max(-1, Math.min(msgs.length, index + delta));
 
 function message(m) {
   const n = msgs.length;
-  const first = firstName(m.name);
+  const first = m.name.trim();
   const box = h('article', { class: 'msg anim', 'aria-label': `${first} · ${t('progress', { i: index + 1, n })}` },
     h('span', { class: 'medal', 'aria-hidden': 'true', html: MEDALS[card.design] }),
     h('div', { class: 'who' }, avatar(m.name, index), h('div', {}, h('b', {}, m.name), h('span', {}, t('wrote')))),

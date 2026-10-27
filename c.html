@@ -225,7 +225,7 @@ function done() {
   const waiting = m.status === 'waiting' && !opened;
   const top = h('div', { class: 'card center' },
     h('div', { class: 'check', 'aria-hidden': 'true' }, '✓'),
-    h('h1', {}, waiting ? t('pendingTitle') : t('doneTitle', { name: firstName(m.name) })),
+    h('h1', {}, waiting ? t('pendingTitle') : t('doneTitle', { name: m.name })),
     h('p', {}, waiting ? t('pendingBody', vars) : opened ? t('openedBody', vars) : t('doneBody', vars)),
     h('div', { class: 'yours' }, h('div', { class: 'eyebrow' }, t('yours')), h('p', {}, m.body),
       m.photo ? h('img', { src: m.photo, alt: '', style: 'width:100%;border-radius:14px;margin-top:12px' }) : null,
